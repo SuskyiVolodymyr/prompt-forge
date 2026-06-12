@@ -1,4 +1,5 @@
 export type ProjectType = 'nextjs' | 'expo' | 'vite-spa' | 'node-api'
+export type ArchPattern = 'type-based' | 'feature-based' | 'layered'
 
 export interface PromptConfig {
   // Basics
@@ -9,6 +10,20 @@ export interface PromptConfig {
   extraLibs: string
   /** One feature per line; becomes the ordered MVP list */
   features: string
+
+  // Architecture & organization
+  archPattern: ArchPattern
+  separateLogicFromUI: boolean
+  logicInHooks: boolean
+  pureUtils: boolean
+  thinComponents: boolean
+
+  // Guiding principles
+  principleDRY: boolean
+  principleYAGNI: boolean
+  principleKISS: boolean
+  principleSOLID: boolean
+  principleComposition: boolean
 
   // Quality & conventions
   tests: boolean
@@ -56,6 +71,18 @@ export const DEFAULT_CONFIG: PromptConfig = {
   extraLibs: '',
   features: '',
 
+  archPattern: 'feature-based',
+  separateLogicFromUI: true,
+  logicInHooks: true,
+  pureUtils: true,
+  thinComponents: true,
+
+  principleDRY: true,
+  principleYAGNI: true,
+  principleKISS: true,
+  principleSOLID: true,
+  principleComposition: false,
+
   tests: true,
   codeReviewChecklist: true,
   browserVerification: true,
@@ -94,4 +121,10 @@ export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
   { value: 'expo', label: 'React Native + Expo' },
   { value: 'vite-spa', label: 'Vite + React SPA' },
   { value: 'node-api', label: 'Node.js API (Express)' },
+]
+
+export const ARCH_PATTERNS: { value: ArchPattern; label: string }[] = [
+  { value: 'type-based', label: 'Group by type (components/, hooks/, lib/)' },
+  { value: 'feature-based', label: 'Feature-based / feature-sliced (scales best)' },
+  { value: 'layered', label: 'Layered (presentation / domain / data)' },
 ]

@@ -233,7 +233,37 @@ ${stack.devCommand}
 \`\`\``
 }
 
-function conventionsMd(stack: StackDef): string {
+const ARCH_NOTES: Record<PromptConfig['archPattern'], string> = {
+  'type-based':
+    'Group files by type (components/, hooks/, lib/, utils/). Simple and fine for small apps — revisit if one feature\'s files start sprawling across every folder.',
+  'feature-based':
+    'Feature-sliced: each feature owns its components, hooks, logic, and types under a single folder (e.g. src/features/<feature>/). Cross-feature code lives in src/shared/. A feature can be added or deleted as one unit — this scales best as the app grows. Features must not import each other\'s internals; share through src/shared/ only.',
+  'layered':
+    'Layered: presentation (UI) depends on domain (framework-free business logic) depends on data (storage/API). Dependencies point inward only — the domain layer never imports UI components or data-client libraries.',
+}
+
+function organizationRules(c: PromptConfig): string {
+  const rules: string[] = []
+  if (c.separateLogicFromUI) rules.push('- Separate business logic from UI: logic lives in framework-free modules; components/screens render and wire, they do not compute.')
+  if (c.logicInHooks) rules.push('- Stateful or reusable component logic goes into custom hooks (useXxx) — not inlined in components.')
+  if (c.pureUtils) rules.push('- Pure, side-effect-free helpers live in utils/ — no framework imports, unit-testable in isolation. Never duplicate a helper across files.')
+  if (c.thinComponents) rules.push('- Keep components thin and presentational; data fetching and business rules live in hooks or lib, not in the component body.')
+  return rules.join('\n')
+}
+
+function principlesBlock(c: PromptConfig): string {
+  const lines: string[] = []
+  if (c.principleDRY) lines.push('- **DRY** — every piece of logic has one home; extract a shared function instead of copy-pasting a block you will later need to change in two places.')
+  if (c.principleYAGNI) lines.push('- **YAGNI** — build only what the current feature needs. No speculative abstraction, config, or generality for a future that may never arrive.')
+  if (c.principleKISS) lines.push('- **KISS** — prefer the simplest solution that works; reach for cleverness only when a concrete problem demands it.')
+  if (c.principleSOLID) lines.push('- **SOLID** — one responsibility per module; open for extension, closed for modification: adding a variant should be a new file or registry entry, not edits scattered across a switch.')
+  if (c.principleComposition) lines.push('- **Composition over inheritance** — build behavior by composing small functions, hooks, and components; avoid deep class hierarchies and god-objects.')
+  return lines.join('\n')
+}
+
+function conventionsMd(stack: StackDef, c: PromptConfig): string {
+  const principles = principlesBlock(c)
+  const organization = organizationRules(c)
   return `# Coding Conventions
 > Read before writing any component, function, or module.
 
@@ -244,7 +274,7 @@ function conventionsMd(stack: StackDef): string {
 
 ## Project conventions
 ${stack.conventions}
-
+${organization ? `\n## Code organization\n${organization}\n` : ''}${principles ? `\n## Guiding principles\n${principles}\n` : ''}
 ## Comments
 Only for non-obvious WHY. Never narrate what the next line does — if a comment explains why a change is correct, it belongs in the PR description, not the code.
 
@@ -257,12 +287,15 @@ function architectureMd(c: PromptConfig, stack: StackDef): string {
   return `# Architecture
 > Read before creating/moving files, adding dependencies, or changing types.
 
-## Structure
+## Organizing principle
+${ARCH_NOTES[c.archPattern]}
+
+## Base structure (adapt to the organizing principle above)
 \`\`\`
 ${stack.structure}
 \`\`\`
 
-## Principles
+## Modularity
 - One module owns each concern (data access, theming, storage) — everything else imports it.
 - Registries over switch-statements: adding a feature should mean one new entry + one new file, not edits across the codebase.
 - Keep modules swappable in isolation: the storage engine, the model provider, the styling layer.
@@ -426,7 +459,7 @@ ${human}`)
     if (c.claudeFiles) {
       files.push(`### CLAUDE.md\n${claudeMd(c, stack)}`)
       files.push(`### .claude/architecture.md\n${architectureMd(c, stack)}`)
-      files.push(`### .claude/conventions.md\n${conventionsMd(stack)}`)
+      files.push(`### .claude/conventions.md\n${conventionsMd(stack, c)}`)
       if (c.github) files.push(`### .claude/github.md\n${githubMd(c)}`)
       if (c.codeReviewChecklist) files.push(`### .claude/code-review.md\n${codeReviewMd(c, stack)}`)
       if (c.settingsPermissions) files.push(`### .claude/settings.json\n\`\`\`json\n${settingsJson(c)}\n\`\`\``)

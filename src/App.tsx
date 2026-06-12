@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DEFAULT_CONFIG, PROJECT_TYPES, type PromptConfig } from './types'
+import { DEFAULT_CONFIG, PROJECT_TYPES, ARCH_PATTERNS, type PromptConfig } from './types'
 import { buildPrompt } from './template/buildPrompt'
 import { Section, Checkbox, TextField, SelectField, SubBlock } from './components/controls'
 
@@ -68,6 +68,21 @@ export default function App() {
             <TextField label="Purpose (one sentence)" value={config.purpose} onChange={set('purpose')} placeholder="Task tracker with embedded AI agents for engineering teams" />
             <TextField label="Key libraries beyond the base stack" value={config.extraLibs} onChange={set('extraLibs')} placeholder="@anthropic-ai/sdk, better-sqlite3" />
             <TextField label="MVP features (one per line, in order)" value={config.features} onChange={set('features')} multiline placeholder={'Task CRUD with status and priority\nAI prioritization agent\nStatus update generator'} />
+          </Section>
+
+          <Section title="Architecture & principles">
+            <SelectField label="Folder architecture" value={config.archPattern} options={ARCH_PATTERNS} onChange={set('archPattern')} />
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Separation of concerns</p>
+            <Checkbox label="Separate business logic from UI" hint="Logic in framework-free modules; components render and wire, they don't compute" checked={config.separateLogicFromUI} onChange={set('separateLogicFromUI')} />
+            <Checkbox label="Reusable component logic in custom hooks" hint="useXxx, not inlined in components" checked={config.logicInHooks} onChange={set('logicInHooks')} />
+            <Checkbox label="Pure helpers in utils/" hint="No framework imports, no side effects — unit-testable in isolation" checked={config.pureUtils} onChange={set('pureUtils')} />
+            <Checkbox label="Thin, presentational components" hint="Data fetching and business rules live in hooks/lib" checked={config.thinComponents} onChange={set('thinComponents')} />
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Guiding principles</p>
+            <Checkbox label="DRY — Don't Repeat Yourself" hint="One home per piece of logic; extract instead of copy-paste" checked={config.principleDRY} onChange={set('principleDRY')} />
+            <Checkbox label="YAGNI — You Aren't Gonna Need It" hint="Build only what the current feature needs; no speculative abstraction" checked={config.principleYAGNI} onChange={set('principleYAGNI')} />
+            <Checkbox label="KISS — Keep It Simple" hint="Simplest solution that works; cleverness only when needed" checked={config.principleKISS} onChange={set('principleKISS')} />
+            <Checkbox label="SOLID (esp. Open-Closed)" hint="One responsibility per module; extend via new files/registry entries, not scattered edits" checked={config.principleSOLID} onChange={set('principleSOLID')} />
+            <Checkbox label="Composition over inheritance" hint="Compose small functions, hooks, components; avoid deep hierarchies" checked={config.principleComposition} onChange={set('principleComposition')} />
           </Section>
 
           <Section title="Quality & conventions">
