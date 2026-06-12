@@ -180,6 +180,20 @@ function setupSteps(c: PromptConfig, stack: StackDef): string {
     )
   }
   steps.push(...stack.scaffold(c))
+  if (c.tests) {
+    steps.push(
+      c.projectType === 'expo'
+        ? 'Install test tooling: npm install -D jest-expo jest @types/jest react-test-renderer @testing-library/react-native. Add "test": "jest" to package.json scripts and "jest": { "preset": "jest-expo" }.'
+        : 'Install test tooling: npm install -D vitest. Add "test": "vitest run" and "test:watch": "vitest" to package.json scripts.'
+    )
+  }
+  if (c.ci && c.ciLint) {
+    steps.push(
+      c.projectType === 'expo'
+        ? 'Ensure a "lint" script exists in package.json: "lint": "expo lint" (run it once to finish ESLint setup).'
+        : 'Ensure a "lint" script exists in package.json: "lint": "eslint .".'
+    )
+  }
   if (c.claudeFiles) steps.push('Create every file listed under "File contents to create" below — these are your operating instructions for all future sessions.')
   if (c.ci) steps.push('Create .github/workflows/ci.yml (content below).')
   if (c.envExample) steps.push('Create .env.example with every env var the app reads (no real values) and make sure .env.local is gitignored.')
@@ -210,7 +224,7 @@ function goldenRules(c: PromptConfig, stack: StackDef): string {
   }
   if (c.codeReviewChecklist) rules.push('- Never open a PR without running every item in .claude/code-review.md first. One failing item = the PR waits.')
   if (c.browserVerification) {
-    rules.push(`- Verify every change end-to-end before committing: ${stack.verifyHint}. Type-checks passing is necessary, not sufficient — integration and prompt/format bugs only surface at runtime.`)
+    rules.push(`- Verify every change before committing: ${stack.verifyHint}. A green type-check is necessary, not sufficient.`)
   }
   if (c.tests) rules.push('- Run the test suite before every commit. New pure logic (parsers, data access, validation) gets tests in the same PR.')
   rules.push('- Keep docs in sync with code in the same commit: stale CLAUDE.md / architecture notes actively mislead future sessions — updating them is part of the change, not a follow-up.')
@@ -347,17 +361,13 @@ Only for non-obvious WHY. Never narrate what the next line does — if a comment
 - Error messages shown to users must be actionable; internal details stay in server logs.`
 }
 
-function architectureMd(c: PromptConfig, stack: StackDef): string {
+function architectureMd(c: PromptConfig): string {
   return `# Architecture
 > Read before creating/moving files, adding dependencies, or changing types.
 
 ## Organizing principle
 ${ARCH_NOTES[c.archPattern]}
-
-## Structure
-\`\`\`
-${stack.structures[c.archPattern]}
-\`\`\`
+> The folder tree is in CLAUDE.md — this guide covers the why and the modularity rules, not a second copy of the layout.
 
 ## Modularity
 - One module owns each concern (data access, theming, storage) — everything else imports it.
@@ -451,7 +461,11 @@ function ciYml(c: PromptConfig, stack: StackDef): string {
   if (c.ciTypecheck) steps.push('      - name: Type check\n        run: npx tsc --noEmit')
   if (c.ciLint) steps.push('      - name: Lint\n        run: npm run lint')
   if (c.ciTests) steps.push('      - name: Test\n        run: npm test')
-  if (c.ciBuild) steps.push(`      - name: Build\n        run: ${stack.buildCommand}`)
+  // Skip Build when it would just re-run the type-check (e.g. Expo, where there's no real build in CI)
+  const buildIsTypecheck = stack.buildCommand.includes('tsc --noEmit')
+  if (c.ciBuild && !(buildIsTypecheck && c.ciTypecheck)) {
+    steps.push(`      - name: Build\n        run: ${stack.buildCommand}`)
+  }
   return `name: CI
 
 on:
@@ -489,10 +503,19 @@ const TEST_TIMING_TEXT: Record<PromptConfig['testTiming'], string> = {
   end: 'Build features first, then backfill tests for critical paths and known regressions before release. Faster early but riskier — call out which areas remain untested.',
 }
 
+const INTEGRATION_SCOPE: Record<ProjectType, string> = {
+  nextjs: 'data layer, API routes, hooks',
+  expo: 'storage, navigation, and hooks',
+  'vite-spa': 'data layer and hooks',
+  'node-api': 'routes → services → data',
+}
+
 function testingSection(c: PromptConfig): string {
+  // React Native can't run on Vitest cleanly — jest-expo is the ecosystem standard
+  const unitRunner = c.projectType === 'expo' ? 'jest-expo + React Native Testing Library' : 'Vitest'
   const types: string[] = []
   if (c.testUnit) types.push('- **Unit** — pure logic in isolation: parsers, utils, reducers, validation schemas. Highest value, write the most here.')
-  if (c.testIntegration) types.push(`- **Integration** — modules working together: ${c.projectType === 'node-api' ? 'routes → services → data' : 'data layer, API routes, hooks'} exercised against a real test store, not mocks.`)
+  if (c.testIntegration) types.push(`- **Integration** — modules working together: ${INTEGRATION_SCOPE[c.projectType]} exercised against a real test store, not mocks.`)
   if (c.testComponent) types.push('- **Component** — key interactive components via Testing Library; assert what the user sees and does, not internal state.')
   if (c.testE2E) types.push(`- **End-to-end** — critical user flows via ${E2E_TOOL[c.projectType]}; a handful covering the money paths, not every screen.`)
   if (types.length === 0) types.push('- Cover the highest-regression-risk logic with focused tests.')
@@ -509,7 +532,7 @@ function testingSection(c: PromptConfig): string {
       : 'Weight effort toward unit and integration; keep component/E2E focused on a few high-value flows.'
 
   return `## Testing strategy
-Framework: Vitest for unit & integration (\`npm test\`)${c.testE2E ? `, ${E2E_TOOL[c.projectType]} for E2E` : ''}.
+Framework: ${unitRunner} (\`npm test\`)${c.testE2E ? `, ${E2E_TOOL[c.projectType]} for E2E` : ''}.
 
 Test types to write:
 ${types.join('\n')}
@@ -548,8 +571,14 @@ export function buildPrompt(c: PromptConfig): string {
 ## What to do first (in order, before any feature work)
 ${setupSteps(c, stack)}
 
-## Golden rules — from the very first commit, no exceptions
-${goldenRules(c, stack)}
+${
+    c.claudeFiles
+      ? `## Operating rules
+Your full operating rules live in CLAUDE.md and the .claude/ guides you create in setup — read and follow them from that point on. For this setup session specifically:${c.conventionalCommits ? '\n- Conventional Commits, imperative mood' + (c.noCoAuthorTrailers ? ', no Co-Authored-By trailers — ever.' : '.') : ''}
+- If any step fails, stop and report it — never work around a failure to make output look clean.`
+      : `## Golden rules — from the very first commit, no exceptions
+${goldenRules(c, stack)}`
+  }
 
 ## MVP features to implement after scaffold (in order)
 ${features(c)}`)
@@ -564,7 +593,7 @@ ${human}`)
     const files: string[] = []
     if (c.claudeFiles) {
       files.push(`### CLAUDE.md\n${claudeMd(c, stack)}`)
-      files.push(`### .claude/architecture.md\n${architectureMd(c, stack)}`)
+      files.push(`### .claude/architecture.md\n${architectureMd(c)}`)
       files.push(`### .claude/conventions.md\n${conventionsMd(stack, c)}`)
       if (c.github) files.push(`### .claude/github.md\n${githubMd(c)}`)
       if (c.codeReviewChecklist) files.push(`### .claude/code-review.md\n${codeReviewMd(c, stack)}`)
@@ -602,8 +631,7 @@ Target Vercel. Keep zero-config compatibility (no custom server). Remind me to s
 
   parts.push(`## How to work with me
 - When my request is ambiguous, ask one focused question instead of guessing.
-- Propose before building anything large; implement directly for small reversible changes.
-- Report failures honestly (failing tests, broken flows) — never present unverified work as done.`)
+- Propose before building anything large; implement directly for small reversible changes.`)
 
   return parts.join('\n\n')
 }
