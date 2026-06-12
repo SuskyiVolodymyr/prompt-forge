@@ -1,4 +1,4 @@
-import type { PromptConfig, ProjectType } from '../types'
+import type { PromptConfig, ProjectType, ArchPattern } from '../types'
 
 const slugify = (s: string) =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-app'
@@ -8,7 +8,7 @@ interface StackDef {
   scaffold: (c: PromptConfig) => string[]
   devCommand: string
   buildCommand: string
-  structure: string
+  structures: Record<ArchPattern, string>
   conventions: string
   verifyHint: string
 }
@@ -22,11 +22,29 @@ const STACKS: Record<ProjectType, StackDef> = {
     ],
     devCommand: 'npm run dev',
     buildCommand: 'npm run build',
-    structure: `app/                  Pages and API route handlers (thin — delegate to lib/)
+    structures: {
+      'type-based': `app/                  Pages and API route handlers (thin — delegate to lib/)
 components/           React components (PascalCase files)
 lib/                  Business logic, data access, shared types, validation
 lib/hooks/            Custom hooks (server state, derived state)
 public/               Static assets`,
+      'feature-based': `app/                  Routes only — pages/layouts that compose feature modules
+app/api/              Route handlers — thin, delegate into features/ or lib/
+features/<feature>/   One folder per feature, self-contained:
+  components/         Feature UI
+  hooks/             Feature hooks
+  <feature>.logic.ts Feature business logic (framework-free)
+  <feature>.types.ts Feature types + Zod schemas
+shared/               Cross-feature UI, hooks, utils (features never import each other)
+lib/                  App-wide data access + infra (one source of truth)
+public/               Static assets`,
+      'layered': `app/                  Presentation entry — routes/pages (UI only)
+app/api/              Thin route handlers — call domain services
+components/           Presentation — reusable UI
+domain/               Business logic & types — framework-free; imports no UI or data libs
+data/                 Data access (DB/API clients); implements interfaces from domain/
+public/               Static assets`,
+    },
     conventions: `- Business logic lives in lib/ — components and route handlers stay thin
 - All data access goes through a single lib module (one source of truth) — never raw queries in components or routes
 - Validate every API input at the boundary with Zod; return { error: string } with a proper status on failure
@@ -46,7 +64,8 @@ public/               Static assets`,
     ],
     devCommand: 'npx expo start',
     buildCommand: 'npx tsc --noEmit',
-    structure: `App.tsx               NavigationContainer + providers + Stack navigator
+    structures: {
+      'type-based': `App.tsx               NavigationContainer + providers + Stack navigator
 src/components/       UI (one PascalCase folder per component)
 src/screens/          Screen-level components
 src/context/          React Context + useReducer (Provider + useXxx hook)
@@ -54,6 +73,23 @@ src/storage/          storage.ts — ALL AsyncStorage access goes through here
 src/theme/            theme.ts — single source of truth for colors/spacing/fontSize
 src/constants/        constants.ts — STORAGE_KEYS and named constants, no magic numbers
 src/utils/            Pure TS helpers — zero React Native imports`,
+      'feature-based': `App.tsx               NavigationContainer + providers + Stack navigator
+src/features/<feature>/   One folder per feature, self-contained:
+  screens/           Feature screens
+  components/        Feature UI
+  hooks/             Feature hooks
+  <feature>.logic.ts Feature business logic (zero RN imports)
+src/shared/           Cross-feature components, hooks, utils (features never import each other)
+src/storage/          storage.ts — ALL AsyncStorage access goes through here
+src/theme/            theme.ts — single source of truth for colors/spacing/fontSize
+src/constants/        constants.ts — STORAGE_KEYS and named constants, no magic numbers`,
+      'layered': `App.tsx               NavigationContainer + providers + Stack navigator
+src/presentation/     Screens & components (UI only)
+src/domain/           Business logic & types — zero React Native imports
+src/data/             storage.ts / API clients; implements interfaces from domain/
+src/theme/            theme.ts — single source of truth for colors/spacing/fontSize
+src/constants/        constants.ts — named constants, no magic numbers`,
+    },
     conventions: `- Functional components, named exports only; Props interface directly above the component
 - Pressable over TouchableOpacity, always; SafeAreaView from react-native-safe-area-context only
 - No inline styles — StyleSheet.create(); all colors/sizes/spacing from src/theme/theme.ts
@@ -73,10 +109,23 @@ src/utils/            Pure TS helpers — zero React Native imports`,
     ],
     devCommand: 'npm run dev',
     buildCommand: 'npm run build',
-    structure: `src/components/       React components (PascalCase files)
+    structures: {
+      'type-based': `src/components/       React components (PascalCase files)
 src/lib/              Business logic, shared types, pure helpers
 src/hooks/            Custom hooks
 src/index.css         Tailwind entry`,
+      'feature-based': `src/features/<feature>/   One folder per feature, self-contained:
+  components/         Feature UI
+  hooks/             Feature hooks
+  <feature>.logic.ts Feature business logic (framework-free)
+src/shared/           Cross-feature UI, hooks, utils (features never import each other)
+src/lib/              App-wide infra (data access, config)
+src/index.css         Tailwind entry`,
+      'layered': `src/presentation/     Components & views (UI only)
+src/domain/           Business logic & types — framework-free
+src/data/             API/storage clients; implements interfaces from domain/
+src/index.css         Tailwind entry`,
+    },
     conventions: `- Business logic in src/lib/ — components stay thin and renderable
 - Tailwind utility classes only — no CSS modules, no inline styles
 - Derive state where possible; no redundant useState mirroring props
@@ -93,11 +142,26 @@ src/index.css         Tailwind entry`,
     ],
     devCommand: 'npm run dev',
     buildCommand: 'npm run build',
-    structure: `src/index.ts          App entry — wires middleware and routes
+    structures: {
+      'type-based': `src/index.ts          App entry — wires middleware and routes
 src/routes/           Route handlers (thin — delegate to services)
 src/services/         Business logic
 src/lib/              Data access, shared types, validation schemas
 src/middleware/       Error handler, request logging`,
+      'feature-based': `src/index.ts          App entry — wires middleware and feature routers
+src/features/<feature>/   One folder per feature, self-contained:
+  <feature>.router.ts  Routes (thin — parse, call service, respond)
+  <feature>.service.ts Business logic
+  <feature>.schema.ts  Zod schemas + types
+src/shared/           Cross-feature utils and types (features never import each other)
+src/lib/              Data access (one source of truth)
+src/middleware/       Error handler, request logging`,
+      'layered': `src/index.ts          App entry — wires middleware and routes
+src/presentation/     Route handlers / controllers (thin)
+src/domain/           Business logic & types — no Express/DB imports
+src/data/             DB/external clients; implements interfaces from domain/
+src/middleware/       Error handler, request logging`,
+    },
     conventions: `- Routes stay thin: parse/validate input, call a service, shape the response
 - Validate every input at the boundary with Zod; central error-handler middleware returns { error: string }
 - Never leak internal error messages or stack traces to clients — log server-side, respond generic
@@ -223,7 +287,7 @@ ${goldenRules(c, stack)}
 
 ## Project structure
 \`\`\`
-${stack.structure}
+${stack.structures[c.archPattern]}
 \`\`\`
 
 ## Running locally
@@ -290,9 +354,9 @@ function architectureMd(c: PromptConfig, stack: StackDef): string {
 ## Organizing principle
 ${ARCH_NOTES[c.archPattern]}
 
-## Base structure (adapt to the organizing principle above)
+## Structure
 \`\`\`
-${stack.structure}
+${stack.structures[c.archPattern]}
 \`\`\`
 
 ## Modularity
