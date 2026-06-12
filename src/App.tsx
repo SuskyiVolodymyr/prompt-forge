@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DEFAULT_CONFIG, PROJECT_TYPES, ARCH_PATTERNS, type PromptConfig } from './types'
+import { DEFAULT_CONFIG, PROJECT_TYPES, ARCH_PATTERNS, TEST_TIMINGS, type PromptConfig } from './types'
 import { buildPrompt } from './template/buildPrompt'
 import { Section, Checkbox, TextField, SelectField, SubBlock } from './components/controls'
 
@@ -85,8 +85,26 @@ export default function App() {
             <Checkbox label="Composition over inheritance" hint="Compose small functions, hooks, components; avoid deep hierarchies" checked={config.principleComposition} onChange={set('principleComposition')} />
           </Section>
 
+          <Section title="Testing">
+            <Checkbox label="Write tests" hint="Vitest for unit & integration" checked={config.tests} onChange={set('tests')} />
+            {config.tests && (
+              <SubBlock>
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Test types</p>
+                <Checkbox label="Unit" hint="Pure logic: parsers, utils, reducers, validation — write the most here" checked={config.testUnit} onChange={set('testUnit')} />
+                <Checkbox label="Integration" hint="Modules together against a real test store, not mocks" checked={config.testIntegration} onChange={set('testIntegration')} />
+                <Checkbox label="Component" hint="Testing Library — assert what the user sees, not internal state" checked={config.testComponent} onChange={set('testComponent')} />
+                <Checkbox label="End-to-end" hint="A few critical flows (Playwright / Detox / supertest)" checked={config.testE2E} onChange={set('testE2E')} />
+                <SelectField label="When to write tests" value={config.testTiming} options={TEST_TIMINGS} onChange={set('testTiming')} />
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Quality rules</p>
+                <Checkbox label="Test behavior, not implementation" hint="Refactors that keep behavior must not break tests" checked={config.testBehaviorNotImpl} onChange={set('testBehaviorNotImpl')} />
+                <Checkbox label="Isolated tests, fresh fixtures" hint="Throwaway DB/temp dir per run; order never matters" checked={config.testIsolation} onChange={set('testIsolation')} />
+                <Checkbox label="Mock external services & API/LLM calls" hint="Tests run offline and deterministically" checked={config.testNoRealExternal} onChange={set('testNoRealExternal')} />
+                <Checkbox label="Enforce a coverage target in CI" hint="e.g. 80% on the logic/data layer — not 100% on UI glue" checked={config.testCoverage} onChange={set('testCoverage')} />
+              </SubBlock>
+            )}
+          </Section>
+
           <Section title="Quality & conventions">
-            <Checkbox label="Test suite (Vitest)" hint="Aimed at pure logic: parsers, data layer, validation — not mocked component tests" checked={config.tests} onChange={set('tests')} />
             <Checkbox label="Code review checklist before every PR" checked={config.codeReviewChecklist} onChange={set('codeReviewChecklist')} />
             <Checkbox label="Verify changes live before committing" hint="Browser / simulator / curl — type-check passing is necessary, not sufficient" checked={config.browserVerification} onChange={set('browserVerification')} />
             <Checkbox label="Conventional Commits" checked={config.conventionalCommits} onChange={set('conventionalCommits')} />

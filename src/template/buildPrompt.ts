@@ -476,6 +476,48 @@ jobs:
 ${steps.join('\n')}`
 }
 
+const E2E_TOOL: Record<ProjectType, string> = {
+  nextjs: 'Playwright',
+  expo: 'Maestro or Detox',
+  'vite-spa': 'Playwright',
+  'node-api': 'supertest against the running app',
+}
+
+const TEST_TIMING_TEXT: Record<PromptConfig['testTiming'], string> = {
+  tdd: 'TDD — write a failing test that captures the requirement, then implement until it passes. Best for well-specified logic (algorithms, parsers, reducers, validation).',
+  'per-feature': 'Write tests as part of each feature\'s PR — a feature is not done until its logic is covered and the suite is green. Recommended: keeps coverage honest without front-loading ceremony.',
+  end: 'Build features first, then backfill tests for critical paths and known regressions before release. Faster early but riskier — call out which areas remain untested.',
+}
+
+function testingSection(c: PromptConfig): string {
+  const types: string[] = []
+  if (c.testUnit) types.push('- **Unit** — pure logic in isolation: parsers, utils, reducers, validation schemas. Highest value, write the most here.')
+  if (c.testIntegration) types.push(`- **Integration** — modules working together: ${c.projectType === 'node-api' ? 'routes → services → data' : 'data layer, API routes, hooks'} exercised against a real test store, not mocks.`)
+  if (c.testComponent) types.push('- **Component** — key interactive components via Testing Library; assert what the user sees and does, not internal state.')
+  if (c.testE2E) types.push(`- **End-to-end** — critical user flows via ${E2E_TOOL[c.projectType]}; a handful covering the money paths, not every screen.`)
+  if (types.length === 0) types.push('- Cover the highest-regression-risk logic with focused tests.')
+
+  const rules: string[] = []
+  if (c.testBehaviorNotImpl) rules.push('- Assert behavior and public contracts, not implementation details — a refactor that keeps behavior must not break tests.')
+  if (c.testIsolation) rules.push('- Each test is isolated: fresh fixtures, no shared mutable state (e.g. a throwaway DB file / temp dir per run). Order must never matter.')
+  if (c.testNoRealExternal) rules.push('- Never hit real external services in tests — mock network, LLM, and third-party calls. Tests run offline and deterministically.')
+  if (c.testCoverage) rules.push('- Set a coverage target on core logic (e.g. 80% on the logic/data layer) and fail CI below it. Do not chase 100% on UI glue.')
+
+  const priorityNote =
+    !c.testComponent && !c.testE2E
+      ? `Skip tests that mostly re-mock the framework — ${c.browserVerification ? 'live verification covers the UI layer' : 'manual verification covers the UI layer'}.`
+      : 'Weight effort toward unit and integration; keep component/E2E focused on a few high-value flows.'
+
+  return `## Testing strategy
+Framework: Vitest for unit & integration (\`npm test\`)${c.testE2E ? `, ${E2E_TOOL[c.projectType]} for E2E` : ''}.
+
+Test types to write:
+${types.join('\n')}
+
+When to write them: ${TEST_TIMING_TEXT[c.testTiming]}
+${rules.length ? `\nRules:\n${rules.join('\n')}\n` : '\n'}${priorityNote}`
+}
+
 function agentLogMd(): string {
   return `# AGENT_LOG — AI-Assisted Development Journal
 
@@ -541,10 +583,7 @@ ${human}`)
 ${files.join('\n\n')}`)
   }
 
-  if (c.tests) {
-    parts.push(`## Testing strategy
-Aim tests at the highest-regression-risk pure logic first: data access, parsers, validation schemas. Skip component tests that would mostly mock the interesting parts — ${c.browserVerification ? 'live verification covers that layer' : 'manual verification covers that layer'}. Use Vitest. Tests must run in CI and locally via npm test.`)
-  }
+  if (c.tests) parts.push(testingSection(c))
 
   if (c.seedData) {
     parts.push(`## Demo data

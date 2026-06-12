@@ -1,5 +1,6 @@
 export type ProjectType = 'nextjs' | 'expo' | 'vite-spa' | 'node-api'
 export type ArchPattern = 'type-based' | 'feature-based' | 'layered'
+export type TestTiming = 'tdd' | 'per-feature' | 'end'
 
 export interface PromptConfig {
   // Basics
@@ -25,8 +26,19 @@ export interface PromptConfig {
   principleSOLID: boolean
   principleComposition: boolean
 
-  // Quality & conventions
+  // Testing (sub-options gated by `tests`)
   tests: boolean
+  testUnit: boolean
+  testIntegration: boolean
+  testComponent: boolean
+  testE2E: boolean
+  testTiming: TestTiming
+  testBehaviorNotImpl: boolean
+  testIsolation: boolean
+  testNoRealExternal: boolean
+  testCoverage: boolean
+
+  // Quality & conventions
   codeReviewChecklist: boolean
   browserVerification: boolean
   conventionalCommits: boolean
@@ -84,6 +96,16 @@ export const DEFAULT_CONFIG: PromptConfig = {
   principleComposition: false,
 
   tests: true,
+  testUnit: true,
+  testIntegration: true,
+  testComponent: false,
+  testE2E: false,
+  testTiming: 'per-feature',
+  testBehaviorNotImpl: true,
+  testIsolation: true,
+  testNoRealExternal: true,
+  testCoverage: false,
+
   codeReviewChecklist: true,
   browserVerification: true,
   conventionalCommits: true,
@@ -127,4 +149,10 @@ export const ARCH_PATTERNS: { value: ArchPattern; label: string }[] = [
   { value: 'type-based', label: 'Group by type (components/, hooks/, lib/)' },
   { value: 'feature-based', label: 'Feature-based / feature-sliced (scales best)' },
   { value: 'layered', label: 'Layered (presentation / domain / data)' },
+]
+
+export const TEST_TIMINGS: { value: TestTiming; label: string }[] = [
+  { value: 'tdd', label: 'TDD — test before implementation' },
+  { value: 'per-feature', label: 'Per feature — tests in the same PR (recommended)' },
+  { value: 'end', label: 'At the end — backfill critical paths before release' },
 ]
