@@ -110,6 +110,7 @@ export default function App() {
                   ]}
                   onChange={set('mergeMethod')}
                 />
+                <Checkbox label="Merge only on GitHub (never local git merge)" hint="All integration goes through PRs merged on GitHub — no git merge + push that bypasses CI and review" checked={config.mergeViaGithubOnly} onChange={set('mergeViaGithubOnly')} />
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claude is allowed to…</p>
                 <Checkbox label="Push feature branches" checked={config.permPushBranches} onChange={set('permPushBranches')} />
                 <Checkbox label="Open pull requests" checked={config.permCreatePRs} onChange={set('permCreatePRs')} />

@@ -22,6 +22,7 @@ export interface PromptConfig {
   repoVisibility: 'private' | 'public'
   branchStrategy: 'main' | 'main-develop'
   mergeMethod: 'squash' | 'merge'
+  mergeViaGithubOnly: boolean
   permCreatePRs: boolean
   permMergePRs: boolean
   permPushBranches: boolean
@@ -65,6 +66,7 @@ export const DEFAULT_CONFIG: PromptConfig = {
   repoVisibility: 'private',
   branchStrategy: 'main-develop',
   mergeMethod: 'squash',
+  mergeViaGithubOnly: true,
   permCreatePRs: true,
   permMergePRs: true,
   permPushBranches: true,

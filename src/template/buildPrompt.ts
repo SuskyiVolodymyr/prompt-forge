@@ -141,6 +141,9 @@ function goldenRules(c: PromptConfig, stack: StackDef): string {
   if (c.claudeFiles && c.onDemandContext) {
     rules.push('- Before touching an area, read its guide from the Context Map in CLAUDE.md. Do not guess conventions from memory.')
   }
+  if (c.github && c.mergeViaGithubOnly) {
+    rules.push('- All merges happen on GitHub through pull requests — never `git merge` + push locally, not even for releases. A local merge bypasses CI and review; if a branch needs integrating, open a PR and merge it on GitHub.')
+  }
   if (c.codeReviewChecklist) rules.push('- Never open a PR without running every item in .claude/code-review.md first. One failing item = the PR waits.')
   if (c.browserVerification) {
     rules.push(`- Verify every change end-to-end before committing: ${stack.verifyHint}. Type-checks passing is necessary, not sufficient — integration and prompt/format bugs only surface at runtime.`)
@@ -305,7 +308,11 @@ Types: feat fix chore refactor test docs ci${c.noCoAuthorTrailers ? '\nNo Co-Aut
 
 ## PR rules
 - One concern per PR; title in commit format; body: what / why / how it was verified.
-- PRs target ${target}.${c.ci ? '\n- CI must be green before merge — no exceptions, no --no-verify.' : ''}${c.branchStrategy === 'main-develop' ? '\n- develop → main merges happen at stable release points only.' : ''}`
+- PRs target ${target}.${c.ci ? '\n- CI must be green before merge — no exceptions, no --no-verify.' : ''}${
+    c.mergeViaGithubOnly
+      ? `\n- Integrate ONLY by merging a PR on GitHub (merge button / GitHub MCP / gh pr merge). Never \`git merge\` + push to ${c.branchStrategy === 'main-develop' ? 'develop or main' : 'main'} locally — that bypasses CI and review.${c.branchStrategy === 'main-develop' ? ' develop → main releases are PRs too.' : ''}`
+      : ''
+  }${c.branchStrategy === 'main-develop' && !c.mergeViaGithubOnly ? '\n- develop → main merges happen at stable release points only.' : ''}`
 }
 
 function codeReviewMd(c: PromptConfig, stack: StackDef): string {
