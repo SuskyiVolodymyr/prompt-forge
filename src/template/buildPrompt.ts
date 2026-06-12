@@ -1,4 +1,5 @@
-import type { PromptConfig, ProjectType, ArchPattern } from '../types'
+import type { PromptConfig, ProjectType, ArchPattern, StateMgmt } from '../types'
+import { STORAGE_OPTIONS, isReactStack } from '../types'
 
 const slugify = (s: string) =>
   s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'my-app'
@@ -170,6 +171,51 @@ src/middleware/       Error handler, request logging`,
   },
 }
 
+// --- data & state -------------------------------------------------------
+
+const STORAGE_INFO: Record<string, { install?: string; rule: string; tradeoff: string }> = {
+  none: { rule: 'No persistence layer — state is in-memory and resets on reload/restart.', tradeoff: 'nothing survives a restart; prototypes only.' },
+  localstorage: { rule: 'Persist via localStorage behind ONE typed module (e.g. src/lib/storage.ts) — never touch localStorage directly elsewhere.', tradeoff: '~5MB, strings only, synchronous, single origin.' },
+  indexeddb: { install: 'idb', rule: 'Persist via IndexedDB (idb wrapper) behind one storage module.', tradeoff: 'async API and larger quota, but more ceremony than localStorage.' },
+  sqlite: { install: 'better-sqlite3 @types/better-sqlite3', rule: 'All SQL lives in ONE data module (e.g. lib/db.ts) — never raw queries in components or route handlers.', tradeoff: 'file-based, zero-infra, single-writer — not for concurrent multi-user; swap to Postgres behind the same module to scale.' },
+  postgres: { install: 'prisma @prisma/client', rule: 'All access through the Prisma client wrapped in one data module.', tradeoff: 'needs a running database; use connection pooling in serverless.' },
+  supabase: { install: '@supabase/supabase-js', rule: 'Wrap the Supabase client in one module; keys come from env only.', tradeoff: 'hosted dependency; Row-Level-Security policies are your real auth boundary.' },
+  asyncstorage: { install: '@react-native-async-storage/async-storage', rule: 'ALL AsyncStorage access goes through src/storage/storage.ts, keys prefixed @<slug>/.', tradeoff: 'async string key-value, ~6MB on Android — not for large or relational data.' },
+  'expo-sqlite': { install: 'expo-sqlite', rule: 'All SQL in one data module; never inline queries in screens.', tradeoff: 'on-device relational store; migrations are manual.' },
+  mmkv: { install: 'react-native-mmkv', rule: 'Wrap MMKV in one storage module.', tradeoff: 'fast synchronous key-value, but requires a custom dev build (not Expo Go).' },
+  mongodb: { install: 'mongodb', rule: 'All access through one data module.', tradeoff: 'schemaless; needs a running server; design indexes deliberately.' },
+  'in-memory': { rule: 'In-memory store behind one module.', tradeoff: 'no persistence — data resets on restart; prototypes and tests only.' },
+}
+
+const STATE_TEXT: Record<StateMgmt, string> = {
+  context: 'Client state with useState; lift cross-cutting state into React Context + useReducer. Add a store library only when prop-drilling actually hurts.',
+  zustand: 'Global client state in Zustand stores (one slice per concern); keep selectors narrow so components re-render only on the state they read.',
+  redux: 'Global client state with Redux Toolkit (slices + typed hooks); no hand-rolled action-type constants.',
+}
+
+const STATE_INSTALL: Record<StateMgmt, string | undefined> = {
+  context: undefined,
+  zustand: 'zustand',
+  redux: '@reduxjs/toolkit react-redux',
+}
+
+function storageLabel(c: PromptConfig): string {
+  return STORAGE_OPTIONS[c.projectType].find((o) => o.value === c.storage)?.label ?? c.storage
+}
+
+function dataAndStateSection(c: PromptConfig): string {
+  const s = STORAGE_INFO[c.storage]
+  const lines: string[] = []
+  if (s) {
+    lines.push(`- **Storage:** ${storageLabel(c)}. ${s.rule} Record this choice and its limitation where you document architecture (README / .claude/architecture.md): "${s.tradeoff}"`)
+  }
+  if (isReactStack(c.projectType)) {
+    lines.push(`- **Client state:** ${STATE_TEXT[c.stateMgmt]}`)
+    if (c.serverState) lines.push('- **Server state:** TanStack Query for all server/API data — caching, invalidation, optimistic updates. No manual fetch/useEffect data flows.')
+  }
+  return `## Data & state\n${lines.join('\n')}`
+}
+
 // --- section builders ---------------------------------------------------
 
 function setupSteps(c: PromptConfig, stack: StackDef): string {
@@ -194,6 +240,15 @@ function setupSteps(c: PromptConfig, stack: StackDef): string {
         : 'Ensure a "lint" script exists in package.json: "lint": "eslint .".'
     )
   }
+  const dataDeps: string[] = []
+  const storageInstall = STORAGE_INFO[c.storage]?.install
+  if (storageInstall) dataDeps.push(storageInstall)
+  if (isReactStack(c.projectType)) {
+    const stateInstall = STATE_INSTALL[c.stateMgmt]
+    if (stateInstall) dataDeps.push(stateInstall)
+    if (c.serverState) dataDeps.push('@tanstack/react-query')
+  }
+  if (dataDeps.length) steps.push(`Install data/state deps: npm install ${dataDeps.join(' ')}`)
   if (c.claudeFiles) steps.push('Create every file listed under "File contents to create" below — these are your operating instructions for all future sessions.')
   if (c.ci) steps.push('Create .github/workflows/ci.yml (content below).')
   if (c.envExample) steps.push('Create .env.example with every env var the app reads (no real values) and make sure .env.local is gitignored.')
@@ -213,6 +268,7 @@ function setupSteps(c: PromptConfig, stack: StackDef): string {
 function goldenRules(c: PromptConfig, stack: StackDef): string {
   const rules: string[] = []
   if (c.github) {
+    rules.push('- GitHub operations need the GitHub MCP or an authenticated `gh` CLI. Before the first GitHub step, confirm one is available; if neither is connected, STOP and tell me exactly what is blocked (repo creation, PRs, merges, CI) — never skip or fake those steps.')
     const target = c.branchStrategy === 'main-develop' ? 'develop' : 'main'
     rules.push(`- Never commit directly to ${c.branchStrategy === 'main-develop' ? 'main or develop' : 'main'}. Every change = feature branch + PR targeting ${target}.`)
   }
@@ -339,9 +395,27 @@ function principlesBlock(c: PromptConfig): string {
   return lines.join('\n')
 }
 
+function accessibilityRules(c: PromptConfig): string {
+  if (!c.accessibility || !isReactStack(c.projectType)) return ''
+  const rules =
+    c.projectType === 'expo'
+      ? `- Every touchable has an accessibilityRole and a clear accessibilityLabel.
+- Touch targets >= 44x44 dp (use hitSlop where the visual is smaller).
+- Never convey state by color alone — pair it with text or an icon.
+- Announce dynamic changes (accessibilityLiveRegion / AccessibilityInfo.announceForAccessibility).
+- Respect reduce-motion via AccessibilityInfo.isReduceMotionEnabled() before animating.`
+      : `- Every interactive element has an accessible name (visible text, aria-label, or an associated <label>).
+- Fully keyboard-operable; focus states visible; modals are focus-trapped, close on Escape, and restore focus on close.
+- Never convey meaning by color alone — pair it with text or an icon.
+- Announce async/loading and error states to screen readers (role="status" / aria-live).
+- Respect prefers-reduced-motion for animations and auto-playing motion.`
+  return `\n## Accessibility\n${rules}\n`
+}
+
 function conventionsMd(stack: StackDef, c: PromptConfig): string {
   const principles = principlesBlock(c)
   const organization = organizationRules(c)
+  const a11y = accessibilityRules(c)
   return `# Coding Conventions
 > Read before writing any component, function, or module.
 
@@ -352,7 +426,7 @@ function conventionsMd(stack: StackDef, c: PromptConfig): string {
 
 ## Project conventions
 ${stack.conventions}
-${organization ? `\n## Code organization\n${organization}\n` : ''}${principles ? `\n## Guiding principles\n${principles}\n` : ''}
+${organization ? `\n## Code organization\n${organization}\n` : ''}${principles ? `\n## Guiding principles\n${principles}\n` : ''}${a11y}
 ## Comments
 Only for non-obvious WHY. Never narrate what the next line does — if a comment explains why a change is correct, it belongs in the PR description, not the code.
 
@@ -394,6 +468,9 @@ function githubMd(c: PromptConfig): string {
 
   return `# Git & GitHub Workflow
 > Read before any git operation.
+
+## Prerequisite
+GitHub operations require the GitHub MCP or an authenticated \`gh\` CLI. Before the first GitHub step, confirm one is available. If neither is connected, STOP and tell me what is blocked (repo, PRs, merges, CI) — never skip, fake, or work around those steps.
 
 ## Branches
 \`\`\`
@@ -441,7 +518,16 @@ function codeReviewMd(c: PromptConfig, stack: StackDef): string {
 ${c.tests ? `
 ## Tests
 - [ ] New pure logic has tests; existing tests pass
-- [ ] Tests assert behavior, not implementation details` : ''}
+- [ ] Tests assert behavior, not implementation details` : ''}${
+    c.accessibility && isReactStack(c.projectType)
+      ? `
+## Accessibility
+- [ ] Interactive elements have accessible names${c.projectType === 'expo' ? ' (accessibilityRole + accessibilityLabel)' : ''}
+- [ ] ${c.projectType === 'expo' ? 'Touch targets >= 44x44 dp' : 'Keyboard operable; focus visible; modals trapped + Escape + focus restored'}
+- [ ] Meaning not conveyed by color alone
+- [ ] Loading/error states announced; motion respects reduce-motion`
+      : ''
+  }
 
 ## Security
 - [ ] No secrets in code, logs, or error messages
@@ -574,7 +660,7 @@ ${setupSteps(c, stack)}
 ${
     c.claudeFiles
       ? `## Operating rules
-Your full operating rules live in CLAUDE.md and the .claude/ guides you create in setup — read and follow them from that point on. For this setup session specifically:${c.conventionalCommits ? '\n- Conventional Commits, imperative mood' + (c.noCoAuthorTrailers ? ', no Co-Authored-By trailers — ever.' : '.') : ''}
+Your full operating rules live in CLAUDE.md and the .claude/ guides you create in setup — read and follow them from that point on. For this setup session specifically:${c.github ? '\n- GitHub steps need the GitHub MCP or authenticated `gh` CLI — if neither is connected, STOP and tell me what is blocked (repo, PRs, CI) rather than skipping it.' : ''}${c.conventionalCommits ? '\n- Conventional Commits, imperative mood' + (c.noCoAuthorTrailers ? ', no Co-Authored-By trailers — ever.' : '.') : ''}
 - If any step fails, stop and report it — never work around a failure to make output look clean.`
       : `## Golden rules — from the very first commit, no exceptions
 ${goldenRules(c, stack)}`
@@ -611,6 +697,8 @@ ${human}`)
 
 ${files.join('\n\n')}`)
   }
+
+  parts.push(dataAndStateSection(c))
 
   if (c.tests) parts.push(testingSection(c))
 

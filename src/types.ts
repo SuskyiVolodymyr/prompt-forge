@@ -1,6 +1,7 @@
 export type ProjectType = 'nextjs' | 'expo' | 'vite-spa' | 'node-api'
 export type ArchPattern = 'type-based' | 'feature-based' | 'layered'
 export type TestTiming = 'tdd' | 'per-feature' | 'end'
+export type StateMgmt = 'context' | 'zustand' | 'redux'
 
 export interface PromptConfig {
   // Basics
@@ -11,6 +12,14 @@ export interface PromptConfig {
   extraLibs: string
   /** One feature per line; becomes the ordered MVP list */
   features: string
+
+  // Data & state
+  storage: string
+  stateMgmt: StateMgmt
+  serverState: boolean
+
+  // Accessibility
+  accessibility: boolean
 
   // Architecture & organization
   archPattern: ArchPattern
@@ -82,6 +91,11 @@ export const DEFAULT_CONFIG: PromptConfig = {
   githubUsername: '',
   extraLibs: '',
   features: '',
+
+  storage: 'sqlite',
+  stateMgmt: 'context',
+  serverState: true,
+  accessibility: true,
 
   archPattern: 'feature-based',
   separateLogicFromUI: true,
@@ -156,3 +170,51 @@ export const TEST_TIMINGS: { value: TestTiming; label: string }[] = [
   { value: 'per-feature', label: 'Per feature — tests in the same PR (recommended)' },
   { value: 'end', label: 'At the end — backfill critical paths before release' },
 ]
+
+// Storage options differ by platform — mobile and web persist differently
+export const STORAGE_OPTIONS: Record<ProjectType, { value: string; label: string }[]> = {
+  nextjs: [
+    { value: 'none', label: 'None (in-memory)' },
+    { value: 'sqlite', label: 'SQLite (better-sqlite3)' },
+    { value: 'postgres', label: 'Postgres (Prisma)' },
+    { value: 'supabase', label: 'Supabase' },
+  ],
+  'vite-spa': [
+    { value: 'none', label: 'None (in-memory)' },
+    { value: 'localstorage', label: 'localStorage' },
+    { value: 'indexeddb', label: 'IndexedDB (idb)' },
+  ],
+  expo: [
+    { value: 'none', label: 'None (in-memory)' },
+    { value: 'asyncstorage', label: 'AsyncStorage' },
+    { value: 'expo-sqlite', label: 'expo-sqlite (on-device SQL)' },
+    { value: 'mmkv', label: 'react-native-mmkv (fast KV)' },
+  ],
+  'node-api': [
+    { value: 'in-memory', label: 'In-memory' },
+    { value: 'sqlite', label: 'SQLite (better-sqlite3)' },
+    { value: 'postgres', label: 'Postgres (Prisma)' },
+    { value: 'mongodb', label: 'MongoDB' },
+  ],
+}
+
+export function defaultStorage(pt: ProjectType): string {
+  const map: Record<ProjectType, string> = {
+    nextjs: 'sqlite',
+    'vite-spa': 'localstorage',
+    expo: 'asyncstorage',
+    'node-api': 'sqlite',
+  }
+  return map[pt]
+}
+
+export const STATE_OPTIONS: { value: StateMgmt; label: string }[] = [
+  { value: 'context', label: 'useState + Context (no library)' },
+  { value: 'zustand', label: 'Zustand' },
+  { value: 'redux', label: 'Redux Toolkit' },
+]
+
+/** React UI stacks — state management & accessibility apply; node-api is excluded */
+export function isReactStack(pt: ProjectType): boolean {
+  return pt !== 'node-api'
+}

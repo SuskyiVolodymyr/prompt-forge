@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { DEFAULT_CONFIG, PROJECT_TYPES, ARCH_PATTERNS, TEST_TIMINGS, type PromptConfig } from './types'
+import {
+  DEFAULT_CONFIG,
+  PROJECT_TYPES,
+  ARCH_PATTERNS,
+  TEST_TIMINGS,
+  STORAGE_OPTIONS,
+  STATE_OPTIONS,
+  defaultStorage,
+  isReactStack,
+  type PromptConfig,
+  type ProjectType,
+} from './types'
 import { buildPrompt } from './template/buildPrompt'
 import { Section, Checkbox, TextField, SelectField, SubBlock } from './components/controls'
 
@@ -8,7 +19,13 @@ const STORAGE_KEY = 'prompt-forge-config-v1'
 function loadConfig(): PromptConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as Partial<PromptConfig>) }
+    if (raw) {
+      const merged = { ...DEFAULT_CONFIG, ...(JSON.parse(raw) as Partial<PromptConfig>) }
+      // Storage options are stack-specific — drop a value that doesn't fit the saved stack
+      const valid = STORAGE_OPTIONS[merged.projectType].some((o) => o.value === merged.storage)
+      if (!valid) merged.storage = defaultStorage(merged.projectType)
+      return merged
+    }
   } catch {
     // corrupt storage — fall through to defaults
   }
@@ -27,6 +44,10 @@ export default function App() {
 
   const set = <K extends keyof PromptConfig>(key: K) => (value: PromptConfig[K]) =>
     setConfig((prev) => ({ ...prev, [key]: value }))
+
+  // Switching stack resets storage to that platform's default (web ≠ mobile options)
+  const setProjectType = (pt: ProjectType) =>
+    setConfig((prev) => ({ ...prev, projectType: pt, storage: defaultStorage(pt) }))
 
   function copyPrompt() {
     navigator.clipboard
@@ -63,11 +84,21 @@ export default function App() {
         {/* Form */}
         <div className="flex flex-col gap-5">
           <Section title="Project">
-            <SelectField label="Project type" value={config.projectType} options={PROJECT_TYPES} onChange={set('projectType')} />
+            <SelectField label="Project type" value={config.projectType} options={PROJECT_TYPES} onChange={setProjectType} />
             <TextField label="App name" value={config.appName} onChange={set('appName')} placeholder="DevLog" />
             <TextField label="Purpose (one sentence)" value={config.purpose} onChange={set('purpose')} placeholder="Task tracker with embedded AI agents for engineering teams" />
             <TextField label="Key libraries beyond the base stack" value={config.extraLibs} onChange={set('extraLibs')} placeholder="@anthropic-ai/sdk, better-sqlite3" />
             <TextField label="MVP features (one per line, in order)" value={config.features} onChange={set('features')} multiline placeholder={'Task CRUD with status and priority\nAI prioritization agent\nStatus update generator'} />
+          </Section>
+
+          <Section title="Data & state">
+            <SelectField label="Storage / persistence" value={config.storage} options={STORAGE_OPTIONS[config.projectType]} onChange={set('storage')} />
+            {isReactStack(config.projectType) && (
+              <>
+                <SelectField label="Client state management" value={config.stateMgmt} options={STATE_OPTIONS} onChange={set('stateMgmt')} />
+                <Checkbox label="Server state via TanStack Query" hint="Caching, invalidation, optimistic updates — no manual fetch/useEffect flows" checked={config.serverState} onChange={set('serverState')} />
+              </>
+            )}
           </Section>
 
           <Section title="Architecture & principles">
@@ -106,6 +137,9 @@ export default function App() {
 
           <Section title="Quality & conventions">
             <Checkbox label="Code review checklist before every PR" checked={config.codeReviewChecklist} onChange={set('codeReviewChecklist')} />
+            {isReactStack(config.projectType) && (
+              <Checkbox label="Accessibility baseline" hint="Labels, keyboard/focus, color-independent meaning, reduced-motion — stack-aware (web aria / RN accessibilityRole)" checked={config.accessibility} onChange={set('accessibility')} />
+            )}
             <Checkbox label="Verify changes live before committing" hint="Browser / simulator / curl — type-check passing is necessary, not sufficient" checked={config.browserVerification} onChange={set('browserVerification')} />
             <Checkbox label="Conventional Commits" checked={config.conventionalCommits} onChange={set('conventionalCommits')} />
             <Checkbox label="No Co-Authored-By trailers" hint="Keep commit history clean; document AI involvement elsewhere" checked={config.noCoAuthorTrailers} onChange={set('noCoAuthorTrailers')} />
